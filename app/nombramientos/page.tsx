@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useMemo, useCallback } from "react";
+import Link from "next/link";
 import Papa from "papaparse";
 
 // ─── tipos ─────────────────────────────────────────────────────────────
@@ -253,14 +254,22 @@ export default function NombramientosPage() {
               )}
             </p>
           </div>
-          <a
-            href="https://www.gobiernodecanarias.org/educacion/web/personal/docente/oferta/interinos-sustitutos/nombramientos_diarios/otros_cuerpos/"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-xs text-slate-400 hover:text-white border border-slate-700 rounded-lg px-3 py-1.5 hover:border-slate-500 transition shrink-0"
-          >
-            Fuente oficial ↗
-          </a>
+          <div className="flex items-center gap-2 shrink-0">
+            <Link
+              href="/"
+              className="text-xs text-slate-400 hover:text-white border border-slate-700 rounded-lg px-3 py-1.5 hover:border-slate-500 transition"
+            >
+              ← Inicio
+            </Link>
+            <a
+              href="https://www.gobiernodecanarias.org/educacion/web/personal/docente/oferta/interinos-sustitutos/nombramientos_diarios/otros_cuerpos/"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-xs text-slate-400 hover:text-white border border-slate-700 rounded-lg px-3 py-1.5 hover:border-slate-500 transition"
+            >
+              Fuente oficial ↗
+            </a>
+          </div>
         </div>
       </header>
 
