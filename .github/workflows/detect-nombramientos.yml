@@ -1,0 +1,270 @@
+name: 🔍 Detector Nombramientos (cada hora)
+
+on:
+  schedule:
+    # Cada hora entre las 14:00 y las 22:00 UTC (= hora canaria, UTC+0)
+    # de lunes a viernes
+    - cron: "0 14-22 * * 1-5"
+
+  # Permite lanzarlo manualmente para probar
+  workflow_dispatch:
+
+jobs:
+  detectar:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+
+      - name: Instalar dependencias
+        run: pip install pdfplumber requests pandas
+
+      # ── 1. Comprobar si el PDF de hoy ya existe en la web ──────────────
+      - name: Detectar PDF nuevo
+        id: detector
+        run: |
+          python3 - <<'EOF'
+          import os, requests
+          from datetime import date
+
+          hoy = date.today()
+
+          # Saltar fines de semana (el cron ya lo controla, pero por si acaso)
+          if hoy.weekday() >= 5:
+              print("Fin de semana, nada que hacer.")
+              with open(os.environ["GITHUB_OUTPUT"], "a") as f:
+                  f.write("hay_pdf=false\n")
+              exit(0)
+
+          url = (
+              f"https://www.gobiernodecanarias.org/educacion/6/dgper/nombradiarios/Docs/"
+              f"NDS{hoy.day:02d}-{hoy.month:02d}-{str(hoy.year)[-2:]}.PDF"
+          )
+          print(f"Comprobando: {url}")
+
+          try:
+              r = requests.head(url, timeout=10,
+                                headers={"User-Agent": "Mozilla/5.0"})
+              existe = r.status_code == 200
+          except Exception as e:
+              print(f"Error de red: {e}")
+              existe = False
+
+          print(f"PDF existe en web: {existe}")
+
+          with open(os.environ["GITHUB_OUTPUT"], "a") as f:
+              f.write(f"hay_pdf={'true' if existe else 'false'}\n")
+              f.write(f"url={url}\n")
+              f.write(f"fecha={hoy.isoformat()}\n")
+          EOF
+
+      # ── 2. Comprobar si ya lo tenemos en el CSV ────────────────────────
+      - name: Comprobar si ya está procesado
+        id: ya_procesado
+        if: steps.detector.outputs.hay_pdf == 'true'
+        run: |
+          python3 - <<'EOF'
+          import os, pandas as pd
+          from pathlib import Path
+
+          fecha = "${{ steps.detector.outputs.fecha }}"
+          csv   = Path("public/data/nombramientos.csv")
+
+          if not csv.exists() or csv.stat().st_size == 0:
+              ya = False
+          else:
+              df = pd.read_csv(csv, usecols=["fecha_doc"])
+              ya = fecha in df["fecha_doc"].astype(str).values
+
+          print(f"Fecha {fecha} ya en CSV: {ya}")
+          with open(os.environ["GITHUB_OUTPUT"], "a") as f:
+              f.write(f"ya_existe={'true' if ya else 'false'}\n")
+          EOF
+
+      # ── 3. Descargar y parsear si es nuevo ────────────────────────────
+      - name: Scraping del PDF nuevo
+        if: |
+          steps.detector.outputs.hay_pdf == 'true' &&
+          steps.ya_procesado.outputs.ya_existe == 'false'
+        run: |
+          mkdir -p public/data
+          python scripts/nombramientos_scraper.py \
+            --desde "${{ steps.detector.outputs.fecha }}" \
+            --hasta "${{ steps.detector.outputs.fecha }}" \
+            --salida public/data/nombramientos_new.csv \
+            --verbose
+
+      # ── 4. Combinar con histórico ──────────────────────────────────────
+      - name: Combinar con histórico
+        if: |
+          steps.detector.outputs.hay_pdf == 'true' &&
+          steps.ya_procesado.outputs.ya_existe == 'false'
+        id: combinar
+        run: |
+          python3 - <<'EOF'
+          import os, pandas as pd
+          from pathlib import Path
+          from datetime import date
+
+          nuevo_path  = Path("public/data/nombramientos_new.csv")
+          actual_path = Path("public/data/nombramientos.csv")
+          meta_path   = Path("public/data/metadata.json")
+
+          if not nuevo_path.exists() or nuevo_path.stat().st_size == 0:
+              print("Sin datos nuevos.")
+              with open(os.environ["GITHUB_OUTPUT"], "a") as f:
+                  f.write("nuevos=0\n")
+              exit(0)
+
+          df_nuevo = pd.read_csv(nuevo_path)
+          n_nuevos = len(df_nuevo)
+
+          if actual_path.exists() and actual_path.stat().st_size > 0:
+              df_actual = pd.read_csv(actual_path)
+              df = pd.concat([df_actual, df_nuevo], ignore_index=True)
+              df = df.drop_duplicates(subset=["fecha_doc", "orden", "dni"], keep="last")
+          else:
+              df = df_nuevo
+
+          df = df.sort_values(["fecha_doc", "especialidad", "apellidos_nombre"])
+          df.to_csv(actual_path, index=False, encoding="utf-8-sig")
+          nuevo_path.unlink()
+
+          # Actualizar metadata
+          import json
+          meta = {
+              "ultima_actualizacion": str(date.today()),
+              "total_registros":      int(len(df)),
+              "fecha_min":            str(df["fecha_doc"].min()),
+              "fecha_max":            str(df["fecha_doc"].max()),
+              "islas":                sorted(df["isla"].dropna().unique().tolist()),
+              "especialidades":       sorted(df["especialidad"].dropna().unique().tolist()),
+          }
+          meta_path.write_text(json.dumps(meta, ensure_ascii=False, indent=2))
+
+          print(f"✅ {n_nuevos} nuevos nombramientos añadidos. Total: {len(df)}")
+          with open(os.environ["GITHUB_OUTPUT"], "a") as f:
+              f.write(f"nuevos={n_nuevos}\n")
+              f.write(f"total={len(df)}\n")
+          EOF
+
+      # ── 5. Commit y push ───────────────────────────────────────────────
+      - name: Commit y push
+        if: |
+          steps.detector.outputs.hay_pdf == 'true' &&
+          steps.ya_procesado.outputs.ya_existe == 'false'
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add public/data/nombramientos.csv public/data/metadata.json
+          if git diff --staged --quiet; then
+            echo "Sin cambios."
+          else
+            git commit -m "data: nombramientos ${{ steps.detector.outputs.fecha }} (+${{ steps.combinar.outputs.nuevos }} registros) [skip ci]"
+            git push
+          fi
+
+      # ── 6a. Notificación por Telegram (opcional) ───────────────────────
+      # Para activarla: añade TELEGRAM_BOT_TOKEN y TELEGRAM_CHAT_ID
+      # en Settings → Secrets and variables → Actions
+      # Cómo obtenerlos: https://core.telegram.org/bots#how-do-i-create-a-bot
+      - name: Notificación Telegram
+        if: |
+          steps.detector.outputs.hay_pdf == 'true' &&
+          steps.ya_procesado.outputs.ya_existe == 'false' &&
+          steps.combinar.outputs.nuevos != '0' &&
+          env.TELEGRAM_BOT_TOKEN != ''
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID:   ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          python3 - <<'EOF'
+          import os, requests
+
+          token    = os.environ["TELEGRAM_BOT_TOKEN"]
+          chat_id  = os.environ["TELEGRAM_CHAT_ID"]
+          fecha    = "${{ steps.detector.outputs.fecha }}"
+          nuevos   = "${{ steps.combinar.outputs.nuevos }}"
+          total    = "${{ steps.combinar.outputs.total }}"
+          url_pdf  = "${{ steps.detector.outputs.url }}"
+
+          texto = (
+              f"🏫 *Nuevos nombramientos docentes*\n\n"
+              f"📅 Fecha: `{fecha}`\n"
+              f"📄 Nombramientos nuevos: *{nuevos}*\n"
+              f"📊 Total acumulado: {total}\n\n"
+              f"[Ver PDF original]({url_pdf})"
+          )
+
+          r = requests.post(
+              f"https://api.telegram.org/bot{token}/sendMessage",
+              json={"chat_id": chat_id, "text": texto, "parse_mode": "Markdown"},
+              timeout=10,
+          )
+          print(f"Telegram: {r.status_code} {r.text}")
+          EOF
+
+      # ── 6b. Notificación por email vía Gmail (opcional) ────────────────
+      # Para activarla: añade GMAIL_USER y GMAIL_APP_PASSWORD en Secrets
+      # GMAIL_APP_PASSWORD: contraseña de aplicación de Google (no tu contraseña normal)
+      # Guía: https://support.google.com/accounts/answer/185833
+      - name: Notificación Email
+        if: |
+          steps.detector.outputs.hay_pdf == 'true' &&
+          steps.ya_procesado.outputs.ya_existe == 'false' &&
+          steps.combinar.outputs.nuevos != '0' &&
+          env.GMAIL_USER != ''
+        env:
+          GMAIL_USER:         ${{ secrets.GMAIL_USER }}
+          GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
+          EMAIL_DESTINO:      ${{ secrets.EMAIL_DESTINO }}
+        run: |
+          python3 - <<'EOF'
+          import os, smtplib
+          from email.mime.text import MIMEText
+          from email.mime.multipart import MIMEMultipart
+
+          gmail_user = os.environ["GMAIL_USER"]
+          gmail_pass = os.environ["GMAIL_APP_PASSWORD"]
+          destino    = os.environ.get("EMAIL_DESTINO", gmail_user)
+          fecha      = "${{ steps.detector.outputs.fecha }}"
+          nuevos     = "${{ steps.combinar.outputs.nuevos }}"
+          total      = "${{ steps.combinar.outputs.total }}"
+          url_pdf    = "${{ steps.detector.outputs.url }}"
+
+          msg = MIMEMultipart("alternative")
+          msg["Subject"] = f"[EduCanarias] Nuevos nombramientos — {fecha}"
+          msg["From"]    = gmail_user
+          msg["To"]      = destino
+
+          html = f"""
+          <html><body style="font-family:sans-serif;color:#333">
+            <h2>🏫 Nuevos nombramientos docentes</h2>
+            <table style="border-collapse:collapse">
+              <tr><td style="padding:4px 12px 4px 0"><strong>Fecha</strong></td><td>{fecha}</td></tr>
+              <tr><td style="padding:4px 12px 4px 0"><strong>Nuevos registros</strong></td><td>{nuevos}</td></tr>
+              <tr><td style="padding:4px 12px 4px 0"><strong>Total acumulado</strong></td><td>{total}</td></tr>
+            </table>
+            <p style="margin-top:16px">
+              <a href="{url_pdf}" style="background:#2563eb;color:white;padding:8px 16px;border-radius:6px;text-decoration:none">
+                Ver PDF original
+              </a>
+            </p>
+          </body></html>
+          """
+          msg.attach(MIMEText(html, "html"))
+
+          with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
+              server.login(gmail_user, gmail_pass)
+              server.sendmail(gmail_user, destino, msg.as_string())
+          print(f"Email enviado a {destino}")
+          EOF

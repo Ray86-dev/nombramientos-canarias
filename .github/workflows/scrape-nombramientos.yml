@@ -1,0 +1,173 @@
+name: 📥 Scraper Nombramientos Diarios
+
+on:
+  schedule:
+    # Cada día laborable a las 21:00 hora canaria (UTC+0, misma zona)
+    # La Consejería publica los PDF entre las 18:00-20:00 normalmente
+    - cron: "0 21 * * 1-5"
+
+  # Permite lanzarlo manualmente desde GitHub Actions UI
+  workflow_dispatch:
+    inputs:
+      desde:
+        description: "Fecha inicio (YYYY-MM-DD). Vacío = hoy"
+        required: false
+        default: ""
+      hasta:
+        description: "Fecha fin (YYYY-MM-DD). Vacío = hoy"
+        required: false
+        default: ""
+      modo:
+        description: "Modo de actualización"
+        required: false
+        default: "incremental"
+        type: choice
+        options:
+          - incremental   # solo añade registros nuevos (por defecto)
+          - full          # regenera todo el curso escolar actual
+
+jobs:
+  scrape:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write  # necesario para hacer commit
+
+    steps:
+      # 1. Checkout del repo
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # 2. Python
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+
+      # 3. Dependencias
+      - name: Instalar dependencias
+        run: pip install pdfplumber requests pandas
+
+      # 4. Calcular fechas
+      - name: Calcular rango de fechas
+        id: fechas
+        run: |
+          python3 - <<'EOF'
+          import os
+          from datetime import date, timedelta
+
+          modo    = "${{ github.event.inputs.modo }}"       or "incremental"
+          desde_i = "${{ github.event.inputs.desde }}"      or ""
+          hasta_i = "${{ github.event.inputs.hasta }}"      or ""
+          hoy     = date.today()
+
+          if desde_i and hasta_i:
+              desde = desde_i
+              hasta = hasta_i
+          elif modo == "full":
+              # Curso escolar: septiembre del año anterior o actual
+              sep = date(hoy.year if hoy.month >= 9 else hoy.year - 1, 9, 1)
+              desde = str(sep)
+              hasta = str(hoy)
+          else:
+              # Incremental: solo hoy (o el último día laborable)
+              d = hoy
+              while d.weekday() >= 5:
+                  d -= timedelta(days=1)
+              desde = str(d)
+              hasta = str(d)
+
+          with open(os.environ["GITHUB_OUTPUT"], "a") as f:
+              f.write(f"desde={desde}\n")
+              f.write(f"hasta={hasta}\n")
+          print(f"Rango: {desde} → {hasta}")
+          EOF
+
+      # 5. Crear carpeta de datos si no existe
+      - name: Preparar directorio datos
+        run: mkdir -p public/data
+
+      # 6. Ejecutar scraper
+      - name: Ejecutar scraper
+        run: |
+          python scripts/nombramientos_scraper.py \
+            --desde "${{ steps.fechas.outputs.desde }}" \
+            --hasta "${{ steps.fechas.outputs.hasta }}" \
+            --salida public/data/nombramientos_new.csv \
+            --verbose
+
+      # 7. Combinar CSV nuevo con el histórico (modo incremental)
+      - name: Combinar con histórico
+        run: |
+          python3 - <<'EOF'
+          import pandas as pd
+          from pathlib import Path
+
+          nuevo_path   = Path("public/data/nombramientos_new.csv")
+          actual_path  = Path("public/data/nombramientos.csv")
+
+          if not nuevo_path.exists() or nuevo_path.stat().st_size == 0:
+              print("Sin datos nuevos, nada que combinar.")
+              exit(0)
+
+          df_nuevo = pd.read_csv(nuevo_path)
+          print(f"Nuevos registros: {len(df_nuevo)}")
+
+          if actual_path.exists():
+              df_actual = pd.read_csv(actual_path)
+              print(f"Registros actuales: {len(df_actual)}")
+              df = pd.concat([df_actual, df_nuevo], ignore_index=True)
+              # Deduplicar por fecha + orden + dni (mismo nombramiento en distintas ejecuciones)
+              df = df.drop_duplicates(subset=["fecha_doc", "orden", "dni"], keep="last")
+              df = df.sort_values(["fecha_doc", "especialidad", "apellidos_nombre"])
+          else:
+              df = df_nuevo
+
+          df.to_csv(actual_path, index=False, encoding="utf-8-sig")
+          print(f"✅ Total registros en CSV final: {len(df)}")
+
+          # Limpiar temporal
+          nuevo_path.unlink()
+          EOF
+
+      # 8. Generar metadatos (útil para el frontend)
+      - name: Generar metadata.json
+        run: |
+          python3 - <<'EOF'
+          import pandas as pd
+          import json
+          from pathlib import Path
+          from datetime import date
+
+          csv_path  = Path("public/data/nombramientos.csv")
+          meta_path = Path("public/data/metadata.json")
+
+          if not csv_path.exists():
+              exit(0)
+
+          df = pd.read_csv(csv_path)
+          meta = {
+              "ultima_actualizacion": str(date.today()),
+              "total_registros":      int(len(df)),
+              "fecha_min":            str(df["fecha_doc"].min()),
+              "fecha_max":            str(df["fecha_doc"].max()),
+              "islas":                sorted(df["isla"].dropna().unique().tolist()),
+              "especialidades":       sorted(df["especialidad"].dropna().unique().tolist()),
+          }
+          meta_path.write_text(json.dumps(meta, ensure_ascii=False, indent=2))
+          print(json.dumps(meta, ensure_ascii=False, indent=2))
+          EOF
+
+      # 9. Commit y push si hay cambios
+      - name: Commit y push
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add public/data/nombramientos.csv public/data/metadata.json
+          if git diff --staged --quiet; then
+            echo "Sin cambios, nada que commitear."
+          else
+            FECHA=$(date +"%Y-%m-%d")
+            git commit -m "data: nombramientos actualizados ${FECHA} [skip ci]"
+            git push
+          fi
