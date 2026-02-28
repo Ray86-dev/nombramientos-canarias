@@ -14,6 +14,7 @@ interface Nombramiento {
   jornada: string;
   duracion_dias: string;
   sustituido: string;
+  orden: string;
   [key: string]: string;
 }
 
@@ -92,7 +93,12 @@ export default function StatsPanel({ data, totalData }: StatsPanelProps) {
     ).length;
     const pctVacantes = total > 0 ? Math.round((vacantes / total) * 100) : 0;
 
-    return { total, especialidades, durMedia, pctVacantes, vacantes };
+    const ordenes = data
+      .map((r) => Number(r.orden))
+      .filter((n) => !isNaN(n) && n > 0);
+    const ordenMax = ordenes.length ? Math.max(...ordenes) : 0;
+
+    return { total, especialidades, durMedia, pctVacantes, vacantes, ordenMax };
   }, [data]);
 
   // ── Top 15 especialidades ──
@@ -124,6 +130,30 @@ export default function StatsPanel({ data, totalData }: StatsPanelProps) {
       }));
   }, [data]);
 
+  // ── Orden máximo por especialidad ──
+  const ordenByEspecialidad = useMemo(() => {
+    const stats: Record<string, { max: number; ordenes: number[] }> = {};
+    data.forEach((r) => {
+      if (r.especialidad && r.especialidad !== "nan" && r.orden) {
+        const o = Number(r.orden);
+        if (!isNaN(o) && o > 0) {
+          if (!stats[r.especialidad]) stats[r.especialidad] = { max: 0, ordenes: [] };
+          stats[r.especialidad].ordenes.push(o);
+          if (o > stats[r.especialidad].max) stats[r.especialidad].max = o;
+        }
+      }
+    });
+    return Object.entries(stats)
+      .map(([name, s]) => ({
+        name,
+        max: s.max,
+        media: Math.round(s.ordenes.reduce((a, b) => a + b, 0) / s.ordenes.length),
+        count: s.ordenes.length,
+      }))
+      .sort((a, b) => b.max - a.max)
+      .slice(0, 10);
+  }, [data]);
+
   const isFiltered = data.length !== totalData.length;
 
   return (
@@ -141,7 +171,7 @@ export default function StatsPanel({ data, totalData }: StatsPanelProps) {
       </div>
 
       {/* ── KPIs ── */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
         <KpiCard
           label="Nombramientos"
           value={kpis.total.toLocaleString()}
@@ -153,6 +183,11 @@ export default function StatsPanel({ data, totalData }: StatsPanelProps) {
           label="Vacantes"
           value={`${kpis.pctVacantes}%`}
           sub={`${kpis.vacantes} de ${kpis.total}`}
+        />
+        <KpiCard
+          label="Orden máx."
+          value={kpis.ordenMax > 0 ? kpis.ordenMax.toLocaleString() : "—"}
+          sub="Posición más alta en lista"
         />
       </div>
 
@@ -247,6 +282,37 @@ export default function StatsPanel({ data, totalData }: StatsPanelProps) {
           )}
         </div>
       </div>
+
+      {/* ── Tabla: Orden máximo por especialidad ── */}
+      {ordenByEspecialidad.length > 0 && (
+        <div className="bg-[#0e0e0e] border border-[#1a1a1a] p-4">
+          <h3 className="font-mono text-[10px] uppercase tracking-widest text-[#555555] mb-3">
+            Orden máximo alcanzado por especialidad — ¿Hasta dónde ha llegado la lista?
+          </h3>
+          <div className="overflow-x-auto">
+            <table className="w-full font-mono text-xs">
+              <thead>
+                <tr className="border-b border-[#222222] text-[10px] uppercase tracking-widest text-[#444444]">
+                  <th className="px-3 py-2 text-left">Especialidad</th>
+                  <th className="px-3 py-2 text-right">Orden máx.</th>
+                  <th className="px-3 py-2 text-right">Orden medio</th>
+                  <th className="px-3 py-2 text-right">Nº nombram.</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-[#1a1a1a]">
+                {ordenByEspecialidad.map((row) => (
+                  <tr key={row.name} className="hover:bg-[#1a1a1a] transition-colors duration-150">
+                    <td className="px-3 py-2 text-[#888888]">{row.name}</td>
+                    <td className="px-3 py-2 text-right text-[#f5f5f5] tabular-nums font-semibold">{row.max.toLocaleString()}</td>
+                    <td className="px-3 py-2 text-right text-[#555555] tabular-nums">{row.media.toLocaleString()}</td>
+                    <td className="px-3 py-2 text-right text-[#555555] tabular-nums">{row.count}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
     </section>
   );
 }
