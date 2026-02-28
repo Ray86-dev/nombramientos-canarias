@@ -49,6 +49,22 @@ const fmtDate = (v: string) => {
   return isNaN(d.getTime()) ? v : d.toLocaleDateString("es-ES");
 };
 const fmt = (v: string) => (!v || v === "nan" ? "—" : v);
+const maskName = (v: string): string => {
+  if (!v || v === "nan") return "—";
+  const MASK = "*****";
+  // Formato con coma: "GARCIA PEREZ, Maria"
+  if (v.includes(",")) {
+    const [apellidos, nombre] = v.split(",", 2);
+    const masked = apellidos.trim().replace(/\S+/g, () => MASK);
+    return `${masked}, ${nombre.trim()}`;
+  }
+  // Formato sin coma: "GARCIA PEREZ MARIA" — última palabra = nombre de pila
+  const parts = v.trim().split(/\s+/);
+  if (parts.length === 1) return v;
+  const nombre = parts[parts.length - 1];
+  const masked = parts.slice(0, -1).map(() => MASK).join(" ");
+  return `${masked} ${nombre}`;
+};
 
 // ─── componentes pequeños ──────────────────────────────────────────────
 function IslaTag({ isla }: { isla: string }) {
@@ -344,7 +360,7 @@ export default function Home() {
                   paginated.map((r, i) => (
                     <tr key={i} className="hover:bg-[#1f1f1f] transition-colors duration-150">
                       <td className="px-4 py-3 text-[#444444] text-xs whitespace-nowrap tabular-nums">{fmtDate(r.fecha_doc)}</td>
-                      <td className="px-4 py-3 text-[#f5f5f5] whitespace-nowrap">{fmt(r.apellidos_nombre)}</td>
+                      <td className="px-4 py-3 text-[#f5f5f5] whitespace-nowrap">{maskName(r.apellidos_nombre)}</td>
                       <td className="px-4 py-3 text-[#888888] whitespace-nowrap">{fmt(r.especialidad)}</td>
                       <td className="px-4 py-3 text-[#888888] max-w-52 truncate" title={r.centro_destino}>
                         {fmt(r.centro_destino)}
