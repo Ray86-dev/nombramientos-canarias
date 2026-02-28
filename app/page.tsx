@@ -117,6 +117,8 @@ export default function Home() {
   const [fechaHasta, setFechaHasta] = useState("");
   const [soloVacante, setSoloVacante] = useState(false);
   const [soloUltimos, setSoloUltimos] = useState(false);
+  const [ordenDesde, setOrdenDesde] = useState("");
+  const [ordenHasta, setOrdenHasta] = useState("");
 
   // stats
   const [showStats, setShowStats] = useState(false);
@@ -175,16 +177,18 @@ export default function Home() {
     if (fechaHasta) rows = rows.filter((r) => r.fecha_doc <= fechaHasta);
     if (soloVacante) rows = rows.filter((r) => !r.sustituido || r.sustituido.trim() === "" || r.sustituido === "nan");
     if (soloUltimos && fechaMax) rows = rows.filter((r) => r.fecha_doc === fechaMax);
+    if (ordenDesde) rows = rows.filter((r) => Number(r.orden) >= Number(ordenDesde));
+    if (ordenHasta) rows = rows.filter((r) => Number(r.orden) <= Number(ordenHasta));
 
     return [...rows].sort((a, b) => {
       let va: string | number = a[sortKey] ?? "";
       let vb: string | number = b[sortKey] ?? "";
-      if (sortKey === "duracion_dias") { va = Number(va) || 0; vb = Number(vb) || 0; }
+      if (sortKey === "duracion_dias" || sortKey === "orden") { va = Number(va) || 0; vb = Number(vb) || 0; }
       if (va < vb) return sortDir === "asc" ? -1 : 1;
       if (va > vb) return sortDir === "asc" ? 1 : -1;
       return 0;
     });
-  }, [data, search, isla, jornada, especialidad, fechaDesde, fechaHasta, soloVacante, soloUltimos, fechaMax, sortKey, sortDir]);
+  }, [data, search, isla, jornada, especialidad, fechaDesde, fechaHasta, soloVacante, soloUltimos, ordenDesde, ordenHasta, fechaMax, sortKey, sortDir]);
 
   const paginated = useMemo(() => {
     const start = (page - 1) * PAGE_SIZE;
@@ -202,7 +206,8 @@ export default function Home() {
   const resetFilters = useCallback(() => {
     setSearch(""); setIsla("Todas"); setJornada("Todas");
     setEspecialidad(""); setFechaDesde(""); setFechaHasta("");
-    setSoloVacante(false); setSoloUltimos(false); setPage(1);
+    setSoloVacante(false); setSoloUltimos(false);
+    setOrdenDesde(""); setOrdenHasta(""); setPage(1);
   }, []);
 
   // ── estados de carga / error ──
@@ -234,6 +239,7 @@ export default function Home() {
   // ── render principal ──
   const colHeaders: [string, string][] = [
     ["fecha_doc", "Fecha doc."],
+    ["orden", "Orden"],
     ["apellidos_nombre", "Docente"],
     ["especialidad", "Especialidad"],
     ["centro_destino", "Centro"],
@@ -309,6 +315,15 @@ export default function Home() {
                 className="font-mono bg-[#141414] border border-[#222222] text-[#f5f5f5] text-xs px-2 py-2 focus:outline-none focus:ring-1 focus:ring-[#444444] transition-opacity duration-150 cursor-pointer" />
             </div>
 
+            <div className="flex items-center gap-2 text-sm text-[#888888]">
+              <span className="font-mono text-xs text-[#888888] tracking-wide">Orden</span>
+              <input type="number" placeholder="Min" value={ordenDesde} min="1" onChange={(e) => { setOrdenDesde(e.target.value); setPage(1); }}
+                className="font-mono bg-[#141414] border border-[#222222] text-[#f5f5f5] text-xs px-2 py-2 w-20 focus:outline-none focus:ring-1 focus:ring-[#444444] transition-opacity duration-150" />
+              <span className="text-[#444444]">—</span>
+              <input type="number" placeholder="Max" value={ordenHasta} min="1" onChange={(e) => { setOrdenHasta(e.target.value); setPage(1); }}
+                className="font-mono bg-[#141414] border border-[#222222] text-[#f5f5f5] text-xs px-2 py-2 w-20 focus:outline-none focus:ring-1 focus:ring-[#444444] transition-opacity duration-150" />
+            </div>
+
             <label className="flex items-center gap-2 font-mono text-xs text-[#888888] cursor-pointer select-none">
               <input type="checkbox" checked={soloVacante} onChange={(e) => { setSoloVacante(e.target.checked); setPage(1); }}
                 className="w-3.5 h-3.5 accent-[#f5f5f5] cursor-pointer" />
@@ -319,8 +334,8 @@ export default function Home() {
               onClick={() => { setSoloUltimos((v) => !v); setPage(1); }}
               disabled={!fechaMax}
               className={`font-mono text-xs px-3 py-2 border transition-opacity duration-150 disabled:opacity-30 ${soloUltimos
-                  ? "bg-[#f5f5f5] border-[#f5f5f5] text-[#0a0a0a]"
-                  : "text-[#888888] hover:text-[#f5f5f5] border-[#333333] hover:border-[#444444]"
+                ? "bg-[#f5f5f5] border-[#f5f5f5] text-[#0a0a0a]"
+                : "text-[#888888] hover:text-[#f5f5f5] border-[#333333] hover:border-[#444444]"
                 }`}>
               Últimos{soloUltimos && fechaMax ? ` · ${fmtDate(fechaMax)}` : ""}
             </button>
@@ -333,8 +348,8 @@ export default function Home() {
             <button
               onClick={() => setShowStats((v) => !v)}
               className={`font-mono text-xs px-3 py-2 border transition-opacity duration-150 ${showStats
-                  ? "bg-[#f5f5f5] border-[#f5f5f5] text-[#0a0a0a]"
-                  : "text-[#888888] hover:text-[#f5f5f5] border-[#333333] hover:border-[#444444]"
+                ? "bg-[#f5f5f5] border-[#f5f5f5] text-[#0a0a0a]"
+                : "text-[#888888] hover:text-[#f5f5f5] border-[#333333] hover:border-[#444444]"
                 }`}
             >
               📊 Estadísticas
@@ -390,7 +405,7 @@ export default function Home() {
               <tbody className="divide-y divide-[#1a1a1a]">
                 {paginated.length === 0 ? (
                   <tr>
-                    <td colSpan={10} className="text-center py-16 text-[#444444] text-xs tracking-wide">
+                    <td colSpan={11} className="text-center py-16 text-[#444444] text-xs tracking-wide">
                       No hay resultados con los filtros actuales.
                     </td>
                   </tr>
@@ -398,6 +413,11 @@ export default function Home() {
                   paginated.map((r, i) => (
                     <tr key={i} className="hover:bg-[#1f1f1f] transition-colors duration-150">
                       <td className="px-4 py-3 text-[#444444] text-xs whitespace-nowrap tabular-nums">{fmtDate(r.fecha_doc)}</td>
+                      <td className="px-4 py-3 text-center whitespace-nowrap tabular-nums">
+                        {r.orden && r.orden !== "nan" ? (
+                          <span className="font-mono text-xs text-[#f5f5f5]">{r.orden}</span>
+                        ) : <span className="text-[#444444]">—</span>}
+                      </td>
                       <td className="px-4 py-3 text-[#f5f5f5] whitespace-nowrap">{maskName(r.apellidos_nombre)}</td>
                       <td className="px-4 py-3 text-[#888888] whitespace-nowrap">{fmt(r.especialidad)}</td>
                       <td className="px-4 py-3 text-[#888888] max-w-52 truncate" title={r.centro_destino}>
@@ -412,8 +432,8 @@ export default function Home() {
                       <td className="px-4 py-3 text-center whitespace-nowrap tabular-nums">
                         {r.duracion_dias && r.duracion_dias !== "nan" ? (
                           <span className={`tabular-nums ${Number(r.duracion_dias) >= 100 ? "text-[#f5f5f5]"
-                              : Number(r.duracion_dias) >= 30 ? "text-[#888888]"
-                                : "text-[#444444]"
+                            : Number(r.duracion_dias) >= 30 ? "text-[#888888]"
+                              : "text-[#444444]"
                             }`}>
                             {r.duracion_dias}
                           </span>
@@ -444,8 +464,8 @@ export default function Home() {
               return (
                 <button key={p} onClick={() => setPage(p)}
                   className={`font-mono w-8 h-8 border text-xs transition-opacity duration-150 ${page === p
-                      ? "bg-[#f5f5f5] border-[#f5f5f5] text-[#0a0a0a] font-medium"
-                      : "border-[#333333] text-[#888888] hover:border-[#444444] hover:text-[#f5f5f5]"
+                    ? "bg-[#f5f5f5] border-[#f5f5f5] text-[#0a0a0a] font-medium"
+                    : "border-[#333333] text-[#888888] hover:border-[#444444] hover:text-[#f5f5f5]"
                     }`}>
                   {p}
                 </button>
