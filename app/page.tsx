@@ -115,6 +115,7 @@ export default function Home() {
   const [fechaDesde, setFechaDesde] = useState("");
   const [fechaHasta, setFechaHasta] = useState("");
   const [soloVacante, setSoloVacante] = useState(false);
+  const [soloUltimos, setSoloUltimos] = useState(false);
 
   // sort
   const [sortKey, setSortKey] = useState("fecha_doc");
@@ -146,6 +147,11 @@ export default function Home() {
     [data]
   );
 
+  const fechaMax = useMemo(() =>
+    data.reduce((max, r) => (r.fecha_doc > max ? r.fecha_doc : max), ""),
+    [data]
+  );
+
   const filtered = useMemo(() => {
     let rows = data;
     if (search.trim()) {
@@ -164,6 +170,7 @@ export default function Home() {
     if (fechaDesde) rows = rows.filter((r) => r.fecha_doc >= fechaDesde);
     if (fechaHasta) rows = rows.filter((r) => r.fecha_doc <= fechaHasta);
     if (soloVacante) rows = rows.filter((r) => !r.sustituido || r.sustituido.trim() === "" || r.sustituido === "nan");
+    if (soloUltimos && fechaMax) rows = rows.filter((r) => r.fecha_doc === fechaMax);
 
     return [...rows].sort((a, b) => {
       let va: string | number = a[sortKey] ?? "";
@@ -173,7 +180,7 @@ export default function Home() {
       if (va > vb) return sortDir === "asc" ? 1 : -1;
       return 0;
     });
-  }, [data, search, isla, jornada, especialidad, fechaDesde, fechaHasta, soloVacante, sortKey, sortDir]);
+  }, [data, search, isla, jornada, especialidad, fechaDesde, fechaHasta, soloVacante, soloUltimos, fechaMax, sortKey, sortDir]);
 
   const paginated = useMemo(() => {
     const start = (page - 1) * PAGE_SIZE;
@@ -191,7 +198,7 @@ export default function Home() {
   const resetFilters = useCallback(() => {
     setSearch(""); setIsla("Todas"); setJornada("Todas");
     setEspecialidad(""); setFechaDesde(""); setFechaHasta("");
-    setSoloVacante(false); setPage(1);
+    setSoloVacante(false); setSoloUltimos(false); setPage(1);
   }, []);
 
   // ── estados de carga / error ──
@@ -291,10 +298,10 @@ export default function Home() {
 
             <div className="flex items-center gap-2 text-sm text-[#888888]">
               <span className="font-mono text-xs text-[#888888] tracking-wide">Fecha doc.</span>
-              <input type="date" value={fechaDesde} onChange={(e) => { setFechaDesde(e.target.value); setPage(1); }}
+              <input type="date" value={fechaDesde} min="2025-09-01" onChange={(e) => { setFechaDesde(e.target.value); setPage(1); }}
                 className="font-mono bg-[#141414] border border-[#222222] text-[#f5f5f5] text-xs px-2 py-2 focus:outline-none focus:ring-1 focus:ring-[#444444] transition-opacity duration-150 cursor-pointer" />
               <span className="text-[#444444]">—</span>
-              <input type="date" value={fechaHasta} onChange={(e) => { setFechaHasta(e.target.value); setPage(1); }}
+              <input type="date" value={fechaHasta} min="2025-09-01" onChange={(e) => { setFechaHasta(e.target.value); setPage(1); }}
                 className="font-mono bg-[#141414] border border-[#222222] text-[#f5f5f5] text-xs px-2 py-2 focus:outline-none focus:ring-1 focus:ring-[#444444] transition-opacity duration-150 cursor-pointer" />
             </div>
 
@@ -304,11 +311,26 @@ export default function Home() {
               Solo vacantes
             </label>
 
+            <button
+              onClick={() => { setSoloUltimos((v) => !v); setPage(1); }}
+              disabled={!fechaMax}
+              className={`font-mono text-xs px-3 py-2 border transition-opacity duration-150 disabled:opacity-30 ${
+                soloUltimos
+                  ? "bg-[#f5f5f5] border-[#f5f5f5] text-[#0a0a0a]"
+                  : "text-[#888888] hover:text-[#f5f5f5] border-[#333333] hover:border-[#444444]"
+              }`}>
+              Últimos{soloUltimos && fechaMax ? ` · ${fmtDate(fechaMax)}` : ""}
+            </button>
+
             <button onClick={resetFilters}
               className="font-mono text-xs text-[#888888] hover:text-[#f5f5f5] border border-[#333333] hover:border-[#444444] px-3 py-2 transition-opacity duration-150">
               ✕ Limpiar filtros
             </button>
           </div>
+
+          <p className="font-mono text-xs text-[#444444] pt-1">
+            Histórico disponible desde el 1 de septiembre de 2025 · curso 2025–2026
+          </p>
         </section>
 
         {/* ── Barra de resultados + paginación ── */}
