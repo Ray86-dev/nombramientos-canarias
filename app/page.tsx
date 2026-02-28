@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useMemo, useCallback } from "react";
 import Papa from "papaparse";
+import StatsPanel from "./components/StatsPanel";
 
 // ─── tipos ─────────────────────────────────────────────────────────────
 interface Nombramiento {
@@ -116,6 +117,9 @@ export default function Home() {
   const [fechaHasta, setFechaHasta] = useState("");
   const [soloVacante, setSoloVacante] = useState(false);
   const [soloUltimos, setSoloUltimos] = useState(false);
+
+  // stats
+  const [showStats, setShowStats] = useState(false);
 
   // sort
   const [sortKey, setSortKey] = useState("fecha_doc");
@@ -314,11 +318,10 @@ export default function Home() {
             <button
               onClick={() => { setSoloUltimos((v) => !v); setPage(1); }}
               disabled={!fechaMax}
-              className={`font-mono text-xs px-3 py-2 border transition-opacity duration-150 disabled:opacity-30 ${
-                soloUltimos
+              className={`font-mono text-xs px-3 py-2 border transition-opacity duration-150 disabled:opacity-30 ${soloUltimos
                   ? "bg-[#f5f5f5] border-[#f5f5f5] text-[#0a0a0a]"
                   : "text-[#888888] hover:text-[#f5f5f5] border-[#333333] hover:border-[#444444]"
-              }`}>
+                }`}>
               Últimos{soloUltimos && fechaMax ? ` · ${fmtDate(fechaMax)}` : ""}
             </button>
 
@@ -326,12 +329,25 @@ export default function Home() {
               className="font-mono text-xs text-[#888888] hover:text-[#f5f5f5] border border-[#333333] hover:border-[#444444] px-3 py-2 transition-opacity duration-150">
               ✕ Limpiar filtros
             </button>
+
+            <button
+              onClick={() => setShowStats((v) => !v)}
+              className={`font-mono text-xs px-3 py-2 border transition-opacity duration-150 ${showStats
+                  ? "bg-[#f5f5f5] border-[#f5f5f5] text-[#0a0a0a]"
+                  : "text-[#888888] hover:text-[#f5f5f5] border-[#333333] hover:border-[#444444]"
+                }`}
+            >
+              📊 Estadísticas
+            </button>
           </div>
 
           <p className="font-mono text-xs text-[#444444] pt-1">
             Histórico disponible desde el 1 de septiembre de 2025 · curso 2025–2026
           </p>
         </section>
+
+        {/* ── Panel de estadísticas ── */}
+        {showStats && <StatsPanel data={filtered} totalData={data} />}
 
         {/* ── Barra de resultados + paginación ── */}
         <div className="flex items-center justify-between">
@@ -395,11 +411,10 @@ export default function Home() {
                       <td className="px-4 py-3 text-[#888888] whitespace-nowrap tabular-nums">{fmtDate(r.f_cese_prev)}</td>
                       <td className="px-4 py-3 text-center whitespace-nowrap tabular-nums">
                         {r.duracion_dias && r.duracion_dias !== "nan" ? (
-                          <span className={`tabular-nums ${
-                            Number(r.duracion_dias) >= 100 ? "text-[#f5f5f5]"
-                            : Number(r.duracion_dias) >= 30 ? "text-[#888888]"
-                            : "text-[#444444]"
-                          }`}>
+                          <span className={`tabular-nums ${Number(r.duracion_dias) >= 100 ? "text-[#f5f5f5]"
+                              : Number(r.duracion_dias) >= 30 ? "text-[#888888]"
+                                : "text-[#444444]"
+                            }`}>
                             {r.duracion_dias}
                           </span>
                         ) : <span className="text-[#444444]">—</span>}
@@ -428,11 +443,10 @@ export default function Home() {
               const p = i + 1;
               return (
                 <button key={p} onClick={() => setPage(p)}
-                  className={`font-mono w-8 h-8 border text-xs transition-opacity duration-150 ${
-                    page === p
+                  className={`font-mono w-8 h-8 border text-xs transition-opacity duration-150 ${page === p
                       ? "bg-[#f5f5f5] border-[#f5f5f5] text-[#0a0a0a] font-medium"
                       : "border-[#333333] text-[#888888] hover:border-[#444444] hover:text-[#f5f5f5]"
-                  }`}>
+                    }`}>
                   {p}
                 </button>
               );
