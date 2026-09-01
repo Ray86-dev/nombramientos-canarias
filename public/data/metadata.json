@@ -1,8 +1,8 @@
 {
   "ultima_actualizacion": "2026-09-01",
-  "total_registros": 6707,
+  "total_registros": 6716,
   "fecha_min": "2025-09-03",
-  "fecha_max": "2026-08-31",
+  "fecha_max": "2026-09-01",
   "islas": [
     "El Hierro",
     "Fuerteventura",
@@ -34,6 +34,7 @@
     "Dibujo",
     "Dibujo Artístico y Color",
     "Dibujo Técnico",
+    "Dirección Coral (S)",
     "Diseño Gráfico",
     "Diseño de Interiores",
     "Diseño de Moda",
