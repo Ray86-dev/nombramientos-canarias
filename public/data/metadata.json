@@ -1,8 +1,8 @@
 {
-  "ultima_actualizacion": "2026-09-03",
-  "total_registros": 6728,
+  "ultima_actualizacion": "2026-09-04",
+  "total_registros": 6745,
   "fecha_min": "2025-09-03",
-  "fecha_max": "2026-09-03",
+  "fecha_max": "2026-09-04",
   "islas": [
     "El Hierro",
     "Fuerteventura",
@@ -27,6 +27,7 @@
     "Chino (E.O.I.)",
     "Clave",
     "Cocina y Pastelería",
+    "Composición (Cat)",
     "Composición (S)",
     "Construcciones Civiles y Edificación",
     "Coro",
