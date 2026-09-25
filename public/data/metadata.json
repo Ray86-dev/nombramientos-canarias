@@ -1,8 +1,8 @@
 {
-  "ultima_actualizacion": "2026-09-24",
-  "total_registros": 8626,
+  "ultima_actualizacion": "2026-09-25",
+  "total_registros": 8834,
   "fecha_min": "2025-09-03",
-  "fecha_max": "2026-09-23",
+  "fecha_max": "2026-09-25",
   "islas": [
     "El Hierro",
     "Fuerteventura",
@@ -25,6 +25,7 @@
     "Canto (S)",
     "Canto de jazz (S)",
     "Chino (E.O.I.)",
+    "Clarinete",
     "Clave",
     "Cocina y Pastelería",
     "Composición (Cat)",
@@ -115,6 +116,7 @@
     "Procesos en la Industria Alimentaria",
     "Procesos y Medios de Comunicación",
     "Procesos y Productos de Textil, Confección y Piel",
+    "Procesos y Productos en Artes Gráficas",
     "Procesos y Productos en Madera y Mueble",
     "Producción de Artes Gráficas",
     "Ruso (E.O.I.)",
