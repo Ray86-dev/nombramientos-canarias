@@ -1,5 +1,7 @@
 # Nombramientos · Secundaria Canarias
 
+> **In English:** Search and charts for the teacher appointments the Canary Islands government publishes as weekly PDFs with no search and no history. A Python pipeline (pdfplumber, pandas) builds one dataset; a Next.js frontend filters and charts it in the browser. [Live site](https://no-can.vercel.app).
+
 Buscador de los **nombramientos de profesorado interino** de la Consejería de Educación
 del Gobierno de Canarias, curso **2025/26**.
 
